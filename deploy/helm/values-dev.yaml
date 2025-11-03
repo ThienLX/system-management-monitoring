@@ -1,0 +1,60 @@
+
+grafana:
+  adminPassword: "admin123"          # DEV ONLY
+  service:
+    type: NodePort
+    nodePort: 30300
+  defaultDashboardsTimezone: Asia/Bangkok
+  persistence:
+    enabled: false                   # kind: dùng emptyDir cho nhanh
+  sidecar:
+    dashboards: { enabled: true }
+    datasources: { enabled: true }
+
+prometheus:
+  service:
+    type: NodePort
+    nodePort: 30900
+  prometheusSpec:
+    retention: 30d
+    scrapeInterval: 5s
+    evaluationInterval: 15s
+    storageSpec: {}                  # emptyDir (không tạo PVC)
+
+alertmanager:
+  service:
+    type: NodePort
+    nodePort: 30903
+  alertmanagerSpec:
+    storage: {}                      # emptyDir
+  config:
+    route:
+      receiver: 'default'
+      group_by: ['alertname','namespace','pod']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 1h
+    receivers:
+      - name: default
+        webhook_configs:
+          - url: 'http://example-webhook/notify'  # thay sau
+
+kube-state-metrics: { enabled: true }
+nodeExporter: { enabled: true }
+
+# Một vài rule cơ bản để test
+additionalPrometheusRulesMap:
+  node-rules:
+    groups:
+      - name: node.rules
+        rules:
+          - alert: NodeDown
+            expr: up{job="node-exporter"} == 0
+            for: 5m
+            labels: {severity: critical}
+            annotations: { summary: "Node exporter down ({{ $labels.instance }})" }
+          - alert: HighCPU
+            expr: avg(rate(node_cpu_seconds_total{mode!="idle"}[5m])) by (instance) > 0.9
+            for: 10m
+            labels: {severity: warning}
+            annotations: { summary: "High CPU ({{ $labels.instance }})" }
